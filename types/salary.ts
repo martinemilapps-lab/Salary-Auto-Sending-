@@ -2,6 +2,8 @@ export interface RawExcelRow {
   [key: string]: string | number | undefined | null;
 }
 
+export type RowSendStatus = 'Ready' | 'Sending' | 'Sent' | 'Failed';
+
 export interface EmployeeRecord {
   id: string; // Internal row identifier or Employee ID
   employeeId: string;
@@ -16,6 +18,10 @@ export interface EmployeeRecord {
   currency: string;
   status: 'valid' | 'warning' | 'error';
   validationErrors: string[];
+  sendStatus?: RowSendStatus;
+  sendErrorDetails?: string;
+  messageId?: string;
+  sentAt?: string;
 }
 
 export interface ValidationError {
@@ -53,7 +59,7 @@ export interface BatchSendSummary {
   total: number;
   successful: number;
   failed: number;
-  mode: 'production' | 'simulation';
+  mode: 'production' | 'simulation' | 'unconfigured';
   startedAt: string;
   completedAt?: string;
   results: SendResultItem[];
@@ -69,3 +75,4 @@ export interface WhatsAppApiPayload {
     body: string;
   };
 }
+

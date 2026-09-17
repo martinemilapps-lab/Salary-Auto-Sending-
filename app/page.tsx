@@ -6,12 +6,19 @@ import { ExcelUpload } from '@/components/ExcelUpload';
 import { ValidationErrors } from '@/components/ValidationErrors';
 import { EmployeePreviewTable } from '@/components/EmployeePreviewTable';
 import { MessagePreviewModal } from '@/components/MessagePreviewModal';
+import { SendConfirmationModal } from '@/components/SendConfirmationModal';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { ResultsSummary } from '@/components/ResultsSummary';
 
 import { parseExcelFile } from '@/lib/excel-parser';
-import { EmployeeRecord, ValidationError, BatchSendSummary, SendResultItem } from '@/types/salary';
-import { UploadCloud, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
+import {
+  EmployeeRecord,
+  ValidationError,
+  BatchSendSummary,
+  SendResultItem,
+  RowSendStatus,
+} from '@/types/salary';
+import { ShieldCheck } from 'lucide-react';
 
 export default function HomePage() {
   const [loadedFileName, setLoadedFileName] = useState<string | undefined>(undefined);
@@ -19,7 +26,7 @@ export default function HomePage() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isParsing, setIsParsing] = useState<boolean>(false);
 
-  // Sending state
+  // Sending state & progress tracking
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendProgress, setSendProgress] = useState<{
     total: number;
@@ -34,10 +41,47 @@ export default function HomePage() {
     failedCount: 0,
   });
 
-  // Preview & Summary
+  // Preview & Confirmation Modals
   const [previewEmployee, setPreviewEmployee] = useState<EmployeeRecord | null>(null);
+  const [confirmationState, setConfirmationState] = useState<{
+    isOpen: boolean;
+    mode: 'batch' | 'single' | 'retry';
+    targetEmployee?: EmployeeRecord;
+  }>({
+    isOpen: false,
+    mode: 'batch',
+  });
+
+  // Final Execution Summary
   const [batchSummary, setBatchSummary] = useState<BatchSendSummary | null>(null);
-  const [apiMode, setApiMode] = useState<'production' | 'simulation'>('simulation');
+  const [apiMode, setApiMode] = useState<'production' | 'simulation' | 'unconfigured'>('unconfigured');
+  const [isConfigured, setIsConfigured] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function checkWhatsAppConfig() {
+      try {
+        const response = await fetch('/api/whatsapp-status');
+        if (response.ok) {
+          const data = await response.json();
+          if (isMounted) {
+            const configured = Boolean(data.isConfigured || data.configured);
+            setIsConfigured(configured);
+            setApiMode(configured ? 'production' : 'unconfigured');
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setIsConfigured(false);
+          setApiMode('unconfigured');
+        }
+      }
+    }
+    checkWhatsAppConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleFileSelect = async (file: File) => {
     setIsParsing(true);
@@ -46,7 +90,12 @@ export default function HomePage() {
 
     try {
       const result = await parseExcelFile(file);
-      setParsedRecords(result.records);
+      // Initialize row sendStatus to 'Ready'
+      const initializedRecords: EmployeeRecord[] = result.records.map((r) => ({
+        ...r,
+        sendStatus: 'Ready' as RowSendStatus,
+      }));
+      setParsedRecords(initializedRecords);
       setValidationErrors(result.errors);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to parse Excel file.';
@@ -72,19 +121,118 @@ export default function HomePage() {
     setSendProgress({ total: 0, currentCount: 0, successCount: 0, failedCount: 0 });
   };
 
-  // Execute Batch Sending Loop
-  const handleStartSending = async () => {
-    const validRecords = parsedRecords.filter((r) => r.status === 'valid' || r.status === 'warning');
+  // Helper to update a single record's send status in real-time
+  const updateRecordStatus = (
+    id: string,
+    status: RowSendStatus,
+    errorDetails?: string,
+    messageId?: string,
+    sentAt?: string
+  ) => {
+    setParsedRecords((prev) =>
+      prev.map((r) =>
+        r.id === id
+          ? {
+              ...r,
+              sendStatus: status,
+              sendErrorDetails: errorDetails,
+              messageId,
+              sentAt,
+            }
+          : r
+      )
+    );
+  };
+
+  // Open confirmation for Send All
+  const promptBatchSending = () => {
+    const validRecords = parsedRecords.filter((r) => r.status !== 'error');
     if (validRecords.length === 0) return;
+
+    setConfirmationState({
+      isOpen: true,
+      mode: 'batch',
+    });
+  };
+
+  // Open confirmation for Individual Send
+  const promptSingleSending = (employee: EmployeeRecord) => {
+    if (employee.status === 'error') return;
+
+    setConfirmationState({
+      isOpen: true,
+      mode: 'single',
+      targetEmployee: employee,
+    });
+  };
+
+  // Open confirmation for Retry Failed
+  const promptRetryFailed = () => {
+    const failedRecords = parsedRecords.filter((r) => r.sendStatus === 'Failed');
+    if (failedRecords.length === 0) return;
+
+    setConfirmationState({
+      isOpen: true,
+      mode: 'retry',
+    });
+  };
+
+  // Execute single employee notification dispatch
+  const executeSingleSend = async (employee: EmployeeRecord) => {
+    setIsSending(true);
+    updateRecordStatus(employee.id, 'Sending');
+
+    try {
+      const response = await fetch('/api/send-salary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee }),
+      });
+
+      const data = await response.json();
+      if (data.mode) {
+        setApiMode(data.mode);
+      }
+
+      if (response.ok && data.success) {
+        updateRecordStatus(
+          employee.id,
+          'Sent',
+          undefined,
+          data.messageId,
+          data.sentAt || new Date().toISOString()
+        );
+      } else {
+        updateRecordStatus(
+          employee.id,
+          'Failed',
+          data.error || 'Failed to dispatch WhatsApp notification.'
+        );
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Network failure';
+      updateRecordStatus(employee.id, 'Failed', errorMsg);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Execute Batch Sending Loop
+  const executeBatchSending = async (targetRecords?: EmployeeRecord[]) => {
+    // Target either explicitly provided records (e.g. for retry) or all non-error records
+    const recordsToProcess =
+      targetRecords || parsedRecords.filter((r) => r.status !== 'error');
+
+    if (recordsToProcess.length === 0) return;
 
     setIsSending(true);
     setBatchSummary(null);
 
-    const total = validRecords.length;
+    const total = recordsToProcess.length;
     let successCount = 0;
     let failedCount = 0;
     const sendResults: SendResultItem[] = [];
-    let detectedMode: 'production' | 'simulation' = 'simulation';
+    let detectedMode: 'production' | 'simulation' | 'unconfigured' = 'unconfigured';
     const startTime = new Date().toISOString();
 
     setSendProgress({
@@ -92,11 +240,14 @@ export default function HomePage() {
       currentCount: 0,
       successCount: 0,
       failedCount: 0,
-      currentEmployeeName: validRecords[0]?.employeeName,
+      currentEmployeeName: recordsToProcess[0]?.employeeName,
     });
 
-    for (let i = 0; i < validRecords.length; i++) {
-      const emp = validRecords[i];
+    for (let i = 0; i < recordsToProcess.length; i++) {
+      const emp = recordsToProcess[i];
+
+      // Update row status to Sending
+      updateRecordStatus(emp.id, 'Sending');
 
       setSendProgress({
         total,
@@ -121,6 +272,9 @@ export default function HomePage() {
 
         if (response.ok && data.success) {
           successCount++;
+          const sentAtStr = data.sentAt || new Date().toISOString();
+          updateRecordStatus(emp.id, 'Sent', undefined, data.messageId, sentAtStr);
+
           sendResults.push({
             employeeId: emp.employeeId,
             employeeName: emp.employeeName,
@@ -128,11 +282,14 @@ export default function HomePage() {
             netSalary: emp.netSalary,
             currency: emp.currency,
             status: 'success',
-            sentAt: data.sentAt || new Date().toISOString(),
+            sentAt: sentAtStr,
             messageId: data.messageId,
           });
         } else {
           failedCount++;
+          const errDetail = data.error || 'WhatsApp API request failed';
+          updateRecordStatus(emp.id, 'Failed', errDetail);
+
           sendResults.push({
             employeeId: emp.employeeId,
             employeeName: emp.employeeName,
@@ -140,12 +297,14 @@ export default function HomePage() {
             netSalary: emp.netSalary,
             currency: emp.currency,
             status: 'failed',
-            errorDetails: data.error || 'HTTP request failed',
+            errorDetails: errDetail,
           });
         }
       } catch (err: unknown) {
         failedCount++;
-        const errorMsg = err instanceof Error ? err.message : 'Network failure';
+        const errorMsg = err instanceof Error ? err.message : 'Network Exception';
+        updateRecordStatus(emp.id, 'Failed', errorMsg);
+
         sendResults.push({
           employeeId: emp.employeeId,
           employeeName: emp.employeeName,
@@ -179,12 +338,26 @@ export default function HomePage() {
     });
   };
 
+  // Handle confirmation modal trigger
+  const handleConfirmedAction = () => {
+    if (confirmationState.mode === 'batch') {
+      executeBatchSending();
+    } else if (confirmationState.mode === 'single' && confirmationState.targetEmployee) {
+      executeSingleSend(confirmationState.targetEmployee);
+    } else if (confirmationState.mode === 'retry') {
+      const failedRecords = parsedRecords.filter((r) => r.sendStatus === 'Failed');
+      executeBatchSending(failedRecords);
+    }
+  };
+
   const hasBlockingErrors = validationErrors.some((e) => e.type === 'error');
+  const validRecordsCount = parsedRecords.filter((r) => r.status !== 'error').length;
+  const failedRecordsCount = parsedRecords.filter((r) => r.sendStatus === 'Failed').length;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
       {/* Top Business Navigation Header */}
-      <Header apiMode={apiMode} />
+      <Header apiMode={apiMode} isConfigured={isConfigured} />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -192,13 +365,13 @@ export default function HomePage() {
         <div className="mb-10 text-center max-w-3xl mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold mb-4 border border-emerald-200">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            Meta WhatsApp Cloud API Integration
+            Meta WhatsApp Cloud API Business Automation
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
             HR Salary Sender
           </h1>
           <p className="text-base sm:text-lg text-slate-600 mt-3 font-normal leading-relaxed">
-            Upload an Excel file and send salary notifications via WhatsApp.
+            Upload an Excel payroll file to parse, validate, and send personalized salary statements via WhatsApp.
           </p>
 
           {/* Initial Disabled CTA when no file loaded */}
@@ -247,23 +420,44 @@ export default function HomePage() {
         {/* Step 4: Results Summary & CSV Audit Download */}
         {!isSending && batchSummary && (
           <div className="mt-6">
-            <ResultsSummary summary={batchSummary} onReset={handleReset} />
+            <ResultsSummary
+              summary={batchSummary}
+              onReset={handleReset}
+              onRetryFailed={promptRetryFailed}
+            />
           </div>
         )}
 
         {/* Step 5: Interactive Employee Preview Table */}
-        {loadedFileName && parsedRecords.length > 0 && !isSending && !batchSummary && (
+        {loadedFileName && parsedRecords.length > 0 && !isSending && (
           <div className="mt-8">
             <EmployeePreviewTable
               records={parsedRecords}
               onPreviewMessage={(emp) => setPreviewEmployee(emp)}
-              onStartSending={handleStartSending}
+              onStartBatchSending={promptBatchSending}
+              onSendSingleEmployee={promptSingleSending}
               isSending={isSending}
               hasErrors={hasBlockingErrors}
             />
           </div>
         )}
       </main>
+
+      {/* Confirmation Modal */}
+      <SendConfirmationModal
+        isOpen={confirmationState.isOpen}
+        mode={confirmationState.mode}
+        totalCount={
+          confirmationState.mode === 'single'
+            ? 1
+            : confirmationState.mode === 'retry'
+            ? failedRecordsCount
+            : validRecordsCount
+        }
+        employeeName={confirmationState.targetEmployee?.employeeName}
+        onConfirm={handleConfirmedAction}
+        onClose={() => setConfirmationState({ isOpen: false, mode: 'batch' })}
+      />
 
       {/* Message Preview Modal */}
       <MessagePreviewModal
@@ -281,3 +475,4 @@ export default function HomePage() {
     </div>
   );
 }
+

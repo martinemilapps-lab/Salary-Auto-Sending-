@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Send, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Hourglass, Send } from 'lucide-react';
 
 interface ProgressTrackerProps {
   total: number;
@@ -18,6 +18,7 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
   failedCount,
   currentEmployeeName,
 }) => {
+  const remaining = Math.max(0, total - currentCount);
   const percentage = total > 0 ? Math.round((currentCount / total) * 100) : 0;
 
   return (
@@ -30,9 +31,9 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
           <div>
             <h3 className="font-bold text-base text-white">Sending Salary Statements via WhatsApp</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Currently processing:{' '}
+              Currently sending to:{' '}
               <span className="font-semibold text-emerald-400">
-                {currentEmployeeName || 'Preparing batch...'}
+                {currentEmployeeName || 'Initializing batch loop...'}
               </span>
             </p>
           </div>
@@ -54,25 +55,44 @@ export const ProgressTracker: React.FC<ProgressTrackerProps> = ({
         />
       </div>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-800 text-center">
-        <div className="bg-slate-800/50 p-3 rounded-xl">
-          <p className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Total Batch</p>
-          <p className="text-lg font-bold text-white font-mono mt-0.5">{total}</p>
+      {/* Metrics Grid (5 Items) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-4 border-t border-slate-800 text-center">
+        <div className="bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/50">
+          <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total</p>
+          <p className="text-base font-bold text-white font-mono mt-0.5">{total}</p>
         </div>
-        <div className="bg-emerald-950/40 border border-emerald-800/40 p-3 rounded-xl">
-          <p className="text-[11px] text-emerald-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Delivered
+
+        <div className="bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/50">
+          <p className="text-[10px] text-amber-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
+            <Hourglass className="w-3 h-3 text-amber-400" /> Remaining
           </p>
-          <p className="text-lg font-bold text-emerald-400 font-mono mt-0.5">{successCount}</p>
+          <p className="text-base font-bold text-amber-300 font-mono mt-0.5">{remaining}</p>
         </div>
-        <div className="bg-red-950/40 border border-red-800/40 p-3 rounded-xl">
-          <p className="text-[11px] text-red-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
-            <XCircle className="w-3.5 h-3.5" /> Failed
+
+        <div className="bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/50 col-span-2 sm:col-span-1">
+          <p className="text-[10px] text-blue-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
+            <Send className="w-3 h-3 text-blue-400" /> Currently Sending
           </p>
-          <p className="text-lg font-bold text-red-400 font-mono mt-0.5">{failedCount}</p>
+          <p className="text-xs font-bold text-blue-300 truncate mt-1 px-1">
+            {currentEmployeeName || 'Processing...'}
+          </p>
+        </div>
+
+        <div className="bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl">
+          <p className="text-[10px] text-emerald-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Sent
+          </p>
+          <p className="text-base font-bold text-emerald-400 font-mono mt-0.5">{successCount}</p>
+        </div>
+
+        <div className="bg-red-950/40 border border-red-800/40 p-2.5 rounded-xl">
+          <p className="text-[10px] text-red-400 uppercase tracking-wider font-semibold flex items-center justify-center gap-1">
+            <XCircle className="w-3 h-3" /> Failed
+          </p>
+          <p className="text-base font-bold text-red-400 font-mono mt-0.5">{failedCount}</p>
         </div>
       </div>
     </div>
   );
 };
+

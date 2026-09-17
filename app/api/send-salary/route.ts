@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EmployeeRecord } from '@/types/salary';
 import { generateSalaryMessage } from '@/lib/message-generator';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendWhatsAppMessage, getWhatsAppConfigStatus } from '@/lib/whatsapp';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  const status = getWhatsAppConfigStatus();
+  return NextResponse.json(status);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,7 +38,7 @@ export async function POST(req: NextRequest) {
           mode: result.mode,
           error: result.error || 'Failed to send WhatsApp message.',
         },
-        { status: 500 }
+        { status: result.mode === 'unconfigured' ? 400 : 500 }
       );
     }
 

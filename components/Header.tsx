@@ -1,13 +1,16 @@
 'use client';
 
 import React from 'react';
-import { Send, ShieldCheck, FileSpreadsheet } from 'lucide-react';
+import { Send, ShieldCheck, Key } from 'lucide-react';
 
 interface HeaderProps {
-  apiMode?: 'production' | 'simulation';
+  apiMode?: 'production' | 'simulation' | 'unconfigured';
+  isConfigured?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ apiMode = 'simulation' }) => {
+export const Header: React.FC<HeaderProps> = ({ apiMode = 'unconfigured', isConfigured }) => {
+  const active = isConfigured !== undefined ? isConfigured : apiMode === 'production';
+
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -27,13 +30,17 @@ export const Header: React.FC<HeaderProps> = ({ apiMode = 'simulation' }) => {
           </div>
         </div>
 
-        {/* API Status Badge & Template Quick Button */}
+        {/* API Status Badge */}
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-lg text-xs">
-            <ShieldCheck className={`w-4 h-4 ${apiMode === 'production' ? 'text-emerald-400' : 'text-amber-400'}`} />
+            {active ? (
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <Key className="w-4 h-4 text-amber-400" />
+            )}
             <span className="text-slate-300 font-medium hidden md:inline">WhatsApp Engine:</span>
-            <span className={`font-semibold ${apiMode === 'production' ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {apiMode === 'production' ? 'Cloud API Active' : 'Simulation Mode'}
+            <span className={`font-semibold ${active ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {active ? 'Cloud API Active' : 'Credentials Missing'}
             </span>
           </div>
         </div>

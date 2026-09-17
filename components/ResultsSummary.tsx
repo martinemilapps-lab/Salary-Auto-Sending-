@@ -1,15 +1,16 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, XCircle, Download, RotateCcw, ShieldCheck, FileSpreadsheet } from 'lucide-react';
+import { CheckCircle2, XCircle, Download, RotateCcw, RefreshCw } from 'lucide-react';
 import { BatchSendSummary } from '@/types/salary';
 
 interface ResultsSummaryProps {
   summary: BatchSendSummary;
   onReset: () => void;
+  onRetryFailed?: () => void;
 }
 
-export const ResultsSummary: React.FC<ResultsSummaryProps> = ({ summary, onReset }) => {
+export const ResultsSummary: React.FC<ResultsSummaryProps> = ({ summary, onReset, onRetryFailed }) => {
   const handleDownloadCsv = () => {
     const headers = ['Employee ID', 'Employee Name', 'WhatsApp Number', 'Net Salary', 'Currency', 'Status', 'Timestamp', 'Message ID / Error'];
     
@@ -43,14 +44,25 @@ export const ResultsSummary: React.FC<ResultsSummaryProps> = ({ summary, onReset
         <div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-            <h2 className="text-xl font-bold text-slate-900">Salary Dispatch Completed</h2>
+            <h2 className="text-xl font-bold text-slate-900">Salary Notifications Completed</h2>
           </div>
           <p className="text-sm text-slate-500 mt-1">
-            All employee salary statements have been processed. Review the execution summary below.
+            Execution completed for all target employees. Summary breakdown below.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {summary.failed > 0 && onRetryFailed && (
+            <button
+              type="button"
+              onClick={onRetryFailed}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm rounded-xl transition-all shadow-sm hover:scale-[1.02]"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry Only Failed Employees ({summary.failed})
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleDownloadCsv}
@@ -74,13 +86,13 @@ export const ResultsSummary: React.FC<ResultsSummaryProps> = ({ summary, onReset
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Processed</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Employees</p>
           <p className="text-2xl font-black text-slate-900 font-mono mt-1">{summary.total}</p>
         </div>
 
         <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl">
           <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider flex items-center justify-between">
-            <span>Successfully Delivered</span>
+            <span>Successfully Sent</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           </p>
           <p className="text-2xl font-black text-emerald-700 font-mono mt-1">{summary.successful}</p>
@@ -144,3 +156,4 @@ export const ResultsSummary: React.FC<ResultsSummaryProps> = ({ summary, onReset
     </div>
   );
 };
+

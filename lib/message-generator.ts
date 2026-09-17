@@ -15,18 +15,20 @@ export function formatCurrencyNumber(amount: number): string {
  */
 export function generateSalaryMessage(employee: EmployeeRecord): string {
   const currencyStr = employee.currency || 'EGP';
-  const basicStr = formatCurrencyNumber(employee.basicSalary);
-  const bonusStr = formatCurrencyNumber(employee.bonus);
-  const deductionsStr = formatCurrencyNumber(employee.deductions);
-  const netStr = formatCurrencyNumber(employee.netSalary);
+  const basicStr = `${formatCurrencyNumber(employee.basicSalary)} ${currencyStr}`;
+  const bonusStr = `${formatCurrencyNumber(employee.bonus)} ${currencyStr}`;
+  const deductionsStr = `${formatCurrencyNumber(employee.deductions)} ${currencyStr}`;
+  const netStr = `${formatCurrencyNumber(employee.netSalary)} ${currencyStr}`;
 
   return (
     `Hello ${employee.employeeName.trim()},\n\n` +
-    `Your salary statement for ${employee.salaryMonth.trim()}.\n\n` +
-    `Basic Salary: ${basicStr} ${currencyStr}\n` +
-    `Bonus: ${bonusStr} ${currencyStr}\n` +
-    `Deductions: ${deductionsStr} ${currencyStr}\n` +
-    `Net Salary: ${netStr} ${currencyStr}\n\n` +
+    `Salary Statement\n\n` +
+    `Month:\n${employee.salaryMonth.trim()}\n\n` +
+    `Basic Salary:\n${basicStr}\n\n` +
+    `Bonus:\n${bonusStr}\n\n` +
+    `Deductions:\n${deductionsStr}\n\n` +
+    `Net Salary:\n${netStr}\n\n` +
     `Thank you.`
   );
 }
+

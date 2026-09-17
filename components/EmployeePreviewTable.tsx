@@ -1,14 +1,26 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Eye, AlertCircle, CheckCircle, HelpCircle, Send, Users, ShieldAlert } from 'lucide-react';
-import { EmployeeRecord } from '@/types/salary';
+import {
+  Search,
+  Eye,
+  AlertCircle,
+  CheckCircle,
+  Send,
+  Users,
+  ShieldAlert,
+  Loader2,
+  XCircle,
+  RefreshCw,
+} from 'lucide-react';
+import { EmployeeRecord, RowSendStatus } from '@/types/salary';
 import { formatCurrencyNumber } from '@/lib/message-generator';
 
 interface EmployeePreviewTableProps {
   records: EmployeeRecord[];
   onPreviewMessage: (employee: EmployeeRecord) => void;
-  onStartSending: () => void;
+  onStartBatchSending: () => void;
+  onSendSingleEmployee: (employee: EmployeeRecord) => void;
   isSending: boolean;
   hasErrors: boolean;
 }
@@ -16,12 +28,13 @@ interface EmployeePreviewTableProps {
 export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
   records,
   onPreviewMessage,
-  onStartSending,
+  onStartBatchSending,
+  onSendSingleEmployee,
   isSending,
   hasErrors,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'warning' | 'error'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'sent' | 'failed'>('all');
 
   const filteredRecords = records.filter((rec) => {
     const matchesSearch =
@@ -29,14 +42,19 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
       rec.employeeId.toLowerCase().includes(searchQuery.toLowerCase()) ||
       rec.whatsappNumber.includes(searchQuery);
 
-    if (statusFilter === 'all') return matchesSearch;
-    return matchesSearch && rec.status === statusFilter;
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'ready') return !rec.sendStatus || rec.sendStatus === 'Ready';
+    if (statusFilter === 'sent') return rec.sendStatus === 'Sent';
+    if (statusFilter === 'failed') return rec.sendStatus === 'Failed';
+    return true;
   });
 
-  const validCount = records.filter((r) => r.status === 'valid').length;
-  const warningCount = records.filter((r) => r.status === 'warning').length;
-  const errorCount = records.filter((r) => r.status === 'error').length;
-  const readyToSendCount = validCount + warningCount;
+  const validRecords = records.filter((r) => r.status !== 'error');
+  const sentCount = records.filter((r) => r.sendStatus === 'Sent').length;
+  const failedCount = records.filter((r) => r.sendStatus === 'Failed').length;
+  const readyCount = records.filter((r) => !r.sendStatus || r.sendStatus === 'Ready').length;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-8">
@@ -55,21 +73,19 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
           </p>
         </div>
 
-        {/* Action Button: Send Salary Notifications */}
+        {/* Primary Main Action: Send All */}
         <button
           type="button"
-          onClick={onStartSending}
-          disabled={isSending || readyToSendCount === 0 || errorCount > 0}
+          onClick={onStartBatchSending}
+          disabled={isSending || validRecords.length === 0 || hasErrors}
           className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-md transition-all ${
-            isSending || readyToSendCount === 0 || errorCount > 0
+            isSending || validRecords.length === 0 || hasErrors
               ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
               : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 hover:scale-[1.02]'
           }`}
         >
           <Send className="w-4 h-4" />
-          {isSending
-            ? 'Sending Notifications...'
-            : `Send Salary Notifications (${readyToSendCount})`}
+          {isSending ? 'Sending Notifications...' : `Send All (${validRecords.length})`}
         </button>
       </div>
 
@@ -100,37 +116,37 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
             All ({records.length})
           </button>
           <button
-            onClick={() => setStatusFilter('valid')}
+            onClick={() => setStatusFilter('ready')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              statusFilter === 'valid'
+              statusFilter === 'ready'
                 ? 'bg-emerald-600 text-white'
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
             }`}
           >
-            Ready ({validCount})
+            Ready ({readyCount})
           </button>
-          {warningCount > 0 && (
+          {sentCount > 0 && (
             <button
-              onClick={() => setStatusFilter('warning')}
+              onClick={() => setStatusFilter('sent')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                statusFilter === 'warning'
-                  ? 'bg-amber-500 text-white'
+                statusFilter === 'sent'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Warnings ({warningCount})
+              Sent ({sentCount})
             </button>
           )}
-          {errorCount > 0 && (
+          {failedCount > 0 && (
             <button
-              onClick={() => setStatusFilter('error')}
+              onClick={() => setStatusFilter('failed')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                statusFilter === 'error'
+                statusFilter === 'failed'
                   ? 'bg-red-600 text-white'
                   : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Errors ({errorCount})
+              Failed ({failedCount})
             </button>
           )}
         </div>
@@ -142,15 +158,15 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
           <thead className="bg-slate-100/80 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-200">
             <tr>
               <th className="px-4 py-3.5">#</th>
-              <th className="px-4 py-3.5">Employee</th>
-              <th className="px-4 py-3.5">WhatsApp Phone</th>
-              <th className="px-4 py-3.5">Month</th>
+              <th className="px-4 py-3.5">Employee Name</th>
+              <th className="px-4 py-3.5">WhatsApp Number</th>
+              <th className="px-4 py-3.5">Salary Month</th>
               <th className="px-4 py-3.5 text-right">Basic</th>
               <th className="px-4 py-3.5 text-right">Bonus</th>
               <th className="px-4 py-3.5 text-right">Deductions</th>
               <th className="px-4 py-3.5 text-right">Net Salary</th>
-              <th className="px-4 py-3.5 text-center">Status</th>
-              <th className="px-4 py-3.5 text-center">Action</th>
+              <th className="px-4 py-3.5 text-center">Current Status</th>
+              <th className="px-4 py-3.5 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -161,73 +177,117 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
                 </td>
               </tr>
             ) : (
-              filteredRecords.map((employee, idx) => (
-                <tr key={employee.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="px-4 py-3 text-slate-400 font-mono">{idx + 1}</td>
+              filteredRecords.map((employee, idx) => {
+                const currentStatus: RowSendStatus = employee.sendStatus || 'Ready';
 
-                  {/* Employee Name & ID */}
-                  <td className="px-4 py-3">
-                    <div className="font-bold text-slate-900 text-sm">{employee.employeeName || '—'}</div>
-                    <div className="text-[11px] text-slate-400 font-mono">{employee.employeeId}</div>
-                  </td>
+                return (
+                  <tr key={employee.id} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="px-4 py-3 text-slate-400 font-mono">{idx + 1}</td>
 
-                  {/* WhatsApp Phone */}
-                  <td className="px-4 py-3 font-mono font-medium text-slate-800">
-                    {employee.formattedPhone || employee.whatsappNumber || '—'}
-                  </td>
+                    {/* Employee Name */}
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-slate-900 text-sm">{employee.employeeName || '—'}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">{employee.employeeId}</div>
+                    </td>
 
-                  {/* Month */}
-                  <td className="px-4 py-3 text-slate-600 font-medium">{employee.salaryMonth}</td>
+                    {/* WhatsApp Number */}
+                    <td className="px-4 py-3 font-mono font-medium text-slate-800">
+                      {employee.formattedPhone || employee.whatsappNumber || '—'}
+                    </td>
 
-                  {/* Financial Columns */}
-                  <td className="px-4 py-3 text-right font-mono text-slate-700">
-                    {formatCurrencyNumber(employee.basicSalary)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-emerald-600 font-medium">
-                    +{formatCurrencyNumber(employee.bonus)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-red-500 font-medium">
-                    -{formatCurrencyNumber(employee.deductions)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 text-sm">
-                    {formatCurrencyNumber(employee.netSalary)} {employee.currency}
-                  </td>
+                    {/* Salary Month */}
+                    <td className="px-4 py-3 text-slate-600 font-medium">{employee.salaryMonth}</td>
 
-                  {/* Status Badge */}
-                  <td className="px-4 py-3 text-center">
-                    {employee.status === 'valid' && (
-                      <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
-                        <CheckCircle className="w-3.5 h-3.5" />
-                        Ready
-                      </span>
-                    )}
-                    {employee.status === 'warning' && (
-                      <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        Warning
-                      </span>
-                    )}
-                    {employee.status === 'error' && (
-                      <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
-                        <ShieldAlert className="w-3.5 h-3.5" />
-                        Error
-                      </span>
-                    )}
-                  </td>
+                    {/* Financial Columns */}
+                    <td className="px-4 py-3 text-right font-mono text-slate-700">
+                      {formatCurrencyNumber(employee.basicSalary)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-emerald-600 font-medium">
+                      +{formatCurrencyNumber(employee.bonus)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-red-500 font-medium">
+                      -{formatCurrencyNumber(employee.deductions)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-slate-900 text-sm">
+                      {formatCurrencyNumber(employee.netSalary)} {employee.currency}
+                    </td>
 
-                  {/* Action */}
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => onPreviewMessage(employee)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-slate-500" />
-                      Preview
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    {/* Current Status Badge (Ready, Sending, Sent, Failed) */}
+                    <td className="px-4 py-3 text-center">
+                      {currentStatus === 'Ready' && (
+                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Ready
+                        </span>
+                      )}
+                      {currentStatus === 'Sending' && (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                          Sending
+                        </span>
+                      )}
+                      {currentStatus === 'Sent' && (
+                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-full text-[11px] font-semibold">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Sent
+                        </span>
+                      )}
+                      {currentStatus === 'Failed' && (
+                        <span
+                          title={employee.sendErrorDetails || 'Failed to deliver message'}
+                          className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-help"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-red-600" />
+                          Failed
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Individual Row Action: Send Button & Preview Button */}
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onPreviewMessage(employee)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                          title="Preview Message"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500" />
+                          Preview
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onSendSingleEmployee(employee)}
+                          disabled={isSending || employee.status === 'error'}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                            isSending || employee.status === 'error'
+                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                              : currentStatus === 'Failed'
+                              ? 'bg-amber-100 hover:bg-amber-200 text-amber-800'
+                              : currentStatus === 'Sent'
+                              ? 'bg-blue-50 hover:bg-blue-100 text-blue-700'
+                              : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                          }`}
+                          title="Send to this employee"
+                        >
+                          {currentStatus === 'Failed' ? (
+                            <>
+                              <RefreshCw className="w-3 h-3" />
+                              Retry
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-3 h-3" />
+                              Send
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -235,3 +295,4 @@ export const EmployeePreviewTable: React.FC<EmployeePreviewTableProps> = ({
     </div>
   );
 };
+
