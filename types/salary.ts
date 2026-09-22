@@ -65,14 +65,29 @@ export interface BatchSendSummary {
   results: SendResultItem[];
 }
 
+export interface WhatsAppTemplateParameter {
+  type: 'text';
+  text: string;
+}
+
+export interface WhatsAppTemplateComponent {
+  type: 'body';
+  parameters: WhatsAppTemplateParameter[];
+}
+
+export interface WhatsAppTemplateObject {
+  name: string;
+  language: {
+    code: string;
+  };
+  components: WhatsAppTemplateComponent[];
+}
+
 export interface WhatsAppApiPayload {
   messaging_product: 'whatsapp';
   recipient_type: 'individual';
   to: string;
-  type: 'text';
-  text: {
-    preview_url: boolean;
-    body: string;
-  };
+  type: 'template';
+  template: WhatsAppTemplateObject;
 }
 

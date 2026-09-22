@@ -32,3 +32,30 @@ export function generateSalaryMessage(employee: EmployeeRecord): string {
   );
 }
 
+/**
+ * Builds the 6 approved Meta WhatsApp template parameters for the salary_statement utility template.
+ * Parameters are strictly ordered:
+ * {{1}} → Employee Name
+ * {{2}} → Salary Month
+ * {{3}} → Basic Salary (with currency formatting)
+ * {{4}} → Bonus (with currency formatting)
+ * {{5}} → Deductions (with currency formatting)
+ * {{6}} → Net Salary (with currency formatting)
+ */
+export function buildSalaryTemplateParameters(employee: EmployeeRecord): string[] {
+  const currencyStr = employee.currency || 'EGP';
+  const basicStr = `${formatCurrencyNumber(employee.basicSalary)} ${currencyStr}`;
+  const bonusStr = `${formatCurrencyNumber(employee.bonus)} ${currencyStr}`;
+  const deductionsStr = `${formatCurrencyNumber(employee.deductions)} ${currencyStr}`;
+  const netStr = `${formatCurrencyNumber(employee.netSalary)} ${currencyStr}`;
+
+  return [
+    (employee.employeeName || '').trim(),
+    (employee.salaryMonth || '').trim(),
+    basicStr,
+    bonusStr,
+    deductionsStr,
+    netStr,
+  ];
+}
+

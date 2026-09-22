@@ -14,6 +14,16 @@ export interface WhatsAppConfigStatus {
   hasPhoneNumberId: boolean;
   hasApiVersion: boolean;
   apiVersion: string;
+  templateName: string;
+  templateLanguageCode: string;
+}
+
+/**
+ * Normalizes phone number into digits-only format required by Meta WhatsApp Cloud API.
+ * Strips '+', spaces, hyphens, and any non-digit characters.
+ */
+export function normalizePhoneNumber(phone: string): string {
+  return phone.replace(/\D/g, '').trim();
 }
 
 /**
@@ -24,6 +34,8 @@ export function getWhatsAppConfigStatus(): WhatsAppConfigStatus {
   const token = process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const apiVersion = process.env.WHATSAPP_API_VERSION || 'v21.0';
+  const templateName = (process.env.WHATSAPP_TEMPLATE_NAME || 'salary_statement').trim();
+  const templateLanguageCode = (process.env.WHATSAPP_TEMPLATE_LANGUAGE_CODE || 'en').trim();
 
   const hasAccessToken = Boolean(
     token &&
@@ -50,35 +62,67 @@ export function getWhatsAppConfigStatus(): WhatsAppConfigStatus {
     hasPhoneNumberId,
     hasApiVersion,
     apiVersion,
+    templateName,
+    templateLanguageCode,
   };
 }
 
 /**
- * Sends a single WhatsApp message using Meta WhatsApp Business Cloud API.
- * Uses WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_API_VERSION environment variables.
+ * Sends a WhatsApp salary statement using the approved Meta Utility Template.
+ * Outgoing payload structure:
+ * {
+ *   "messaging_product": "whatsapp",
+ *   "recipient_type": "individual",
+ *   "to": "RECIPIENT_PHONE",
+ *   "type": "template",
+ *   "template": {
+ *     "name": "salary_statement",
+ *     "language": { "code": "EXACT_TEMPLATE_LANGUAGE_CODE" },
+ *     "components": [
+ *       {
+ *         "type": "body",
+ *         "parameters": [
+ *           { "type": "text", "text": "EMPLOYEE_NAME" },
+ *           { "type": "text", "text": "SALARY_MONTH" },
+ *           { "type": "text", "text": "BASIC_SALARY" },
+ *           { "type": "text", "text": "BONUS" },
+ *           { "type": "text", "text": "DEDUCTIONS" },
+ *           { "type": "text", "text": "NET_SALARY" }
+ *         ]
+ *       }
+ *     ]
+ *   }
+ * }
+ *
+ * Confidentiality: Salary amounts, complete messages, access tokens, and financial parameters
+ * are strictly NEVER logged to the console or server diagnostics.
  */
-export async function sendWhatsAppMessage(
+export async function sendWhatsAppTemplateMessage(
   recipientPhone: string,
-  messageBody: string
+  parameters: string[]
 ): Promise<SendWhatsAppResponse> {
   const token = process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const apiVersion = process.env.WHATSAPP_API_VERSION || 'v21.0';
+  const templateName = (process.env.WHATSAPP_TEMPLATE_NAME || 'salary_statement').trim();
+  const templateLanguageCode = (process.env.WHATSAPP_TEMPLATE_LANGUAGE_CODE || 'en').trim();
 
-  // Basic validation of input
-  if (!recipientPhone || recipientPhone.trim().length < 8) {
+  // Basic validation of recipient phone
+  const cleanPhone = normalizePhoneNumber(recipientPhone);
+  if (!cleanPhone || cleanPhone.length < 8) {
     return {
       success: false,
       mode: 'unconfigured',
-      error: `Invalid phone number: "${recipientPhone}". A valid E.164 phone number is required.`,
+      error: `Invalid phone number: "${recipientPhone}". A valid international phone number is required.`,
     };
   }
 
-  if (!messageBody || messageBody.trim().length === 0) {
+  // Validate exact 6 template parameters
+  if (!parameters || parameters.length !== 6) {
     return {
       success: false,
       mode: 'unconfigured',
-      error: 'Message body cannot be empty.',
+      error: `Template "${templateName}" requires exactly 6 body parameters, received ${parameters?.length || 0}.`,
     };
   }
 
@@ -96,21 +140,29 @@ export async function sendWhatsAppMessage(
       success: false,
       mode: 'unconfigured',
       error:
-        'WhatsApp API credentials missing. Please set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_API_VERSION in your environment variables.',
+        'WhatsApp API credentials missing. Please set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID in your environment variables.',
     };
   }
-
-  // Format recipient phone: remove '+' and any whitespace as Meta Cloud API expects digits only (e.g. 201012345678)
-  const cleanPhone = recipientPhone.replace(/[\+\s\-\(\)]/g, '').trim();
 
   const payload: WhatsAppApiPayload = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     to: cleanPhone,
-    type: 'text',
-    text: {
-      preview_url: false,
-      body: messageBody,
+    type: 'template',
+    template: {
+      name: templateName,
+      language: {
+        code: templateLanguageCode,
+      },
+      components: [
+        {
+          type: 'body',
+          parameters: parameters.map((param) => ({
+            type: 'text',
+            text: String(param ?? ''),
+          })),
+        },
+      ],
     },
   };
 
@@ -136,6 +188,7 @@ export async function sendWhatsAppMessage(
 
     if (!response.ok) {
       const errorMessage =
+        data?.error?.error_user_msg ||
         data?.error?.message ||
         data?.error?.error_data?.details ||
         `HTTP request failed with status ${response.status}`;
@@ -172,3 +225,22 @@ export async function sendWhatsAppMessage(
     };
   }
 }
+
+/**
+ * Backward compatibility wrapper for sendWhatsAppMessage.
+ */
+export async function sendWhatsAppMessage(
+  recipientPhone: string,
+  parametersOrText: string[] | string
+): Promise<SendWhatsAppResponse> {
+  if (Array.isArray(parametersOrText)) {
+    return sendWhatsAppTemplateMessage(recipientPhone, parametersOrText);
+  }
+  // If a raw string was supplied, wrap it or return error because templates are required
+  return {
+    success: false,
+    mode: 'unconfigured',
+    error: 'Free-form text sending is disabled. Use the approved salary_statement template parameters.',
+  };
+}
+
