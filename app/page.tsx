@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/Header';
+import { ModuleSelector } from '@/components/ModuleSelector';
 import { ExcelUpload } from '@/components/ExcelUpload';
 import { ValidationErrors } from '@/components/ValidationErrors';
 import { EmployeePreviewTable } from '@/components/EmployeePreviewTable';
@@ -10,23 +11,35 @@ import { SendConfirmationModal } from '@/components/SendConfirmationModal';
 import { ProgressTracker } from '@/components/ProgressTracker';
 import { ResultsSummary } from '@/components/ResultsSummary';
 
-import { parseExcelFile } from '@/lib/excel-parser';
+import { parseWeeklyExcelFile } from '@/lib/excel/weekly-mapper';
+import { parseMonthlyExcelFile } from '@/lib/excel/monthly-mapper';
 import {
-  EmployeeRecord,
+  StatementType,
   ValidationError,
   BatchSendSummary,
   SendResultItem,
   RowSendStatus,
-} from '@/types/salary';
-import { ShieldCheck } from 'lucide-react';
+  WhatsAppConfigStatus,
+} from '@/types/common';
+import { WeeklyEmployeeRecord } from '@/types/weekly';
+import { MonthlyEmployeeRecord } from '@/types/monthly';
+import { useTranslation } from '@/lib/i18n';
+import { CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
 
 export default function HomePage() {
+  const { t, direction } = useTranslation();
+  const StepArrow = direction === 'rtl' ? ChevronLeft : ChevronRight;
+
+  // Active business module ('weekly' | 'monthly' | null for module selection landing)
+  const [activeModule, setActiveModule] = useState<StatementType | null>(null);
+
+  // File parsing states
   const [loadedFileName, setLoadedFileName] = useState<string | undefined>(undefined);
-  const [parsedRecords, setParsedRecords] = useState<EmployeeRecord[]>([]);
+  const [parsedRecords, setParsedRecords] = useState<(WeeklyEmployeeRecord | MonthlyEmployeeRecord)[]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isParsing, setIsParsing] = useState<boolean>(false);
 
-  // Sending state & progress tracking
+  // Sending progress & states
   const [isSending, setIsSending] = useState<boolean>(false);
   const [sendProgress, setSendProgress] = useState<{
     total: number;
@@ -42,32 +55,34 @@ export default function HomePage() {
   });
 
   // Preview & Confirmation Modals
-  const [previewEmployee, setPreviewEmployee] = useState<EmployeeRecord | null>(null);
+  const [previewEmployee, setPreviewEmployee] = useState<WeeklyEmployeeRecord | MonthlyEmployeeRecord | null>(null);
   const [confirmationState, setConfirmationState] = useState<{
     isOpen: boolean;
     mode: 'batch' | 'single' | 'retry';
-    targetEmployee?: EmployeeRecord;
+    targetEmployee?: WeeklyEmployeeRecord | MonthlyEmployeeRecord;
   }>({
     isOpen: false,
     mode: 'batch',
   });
 
-  // Final Execution Summary
+  // Batch Execution Summary
   const [batchSummary, setBatchSummary] = useState<BatchSendSummary | null>(null);
   const [apiMode, setApiMode] = useState<'production' | 'simulation' | 'unconfigured'>('unconfigured');
   const [isConfigured, setIsConfigured] = useState<boolean>(false);
+  const [configStatus, setConfigStatus] = useState<WhatsAppConfigStatus | null>(null);
 
+  // Fetch WhatsApp Cloud API status on mount
   useEffect(() => {
     let isMounted = true;
     async function checkWhatsAppConfig() {
       try {
         const response = await fetch('/api/whatsapp-status');
         if (response.ok) {
-          const data = await response.json();
+          const data: WhatsAppConfigStatus = await response.json();
           if (isMounted) {
-            const configured = Boolean(data.isConfigured || data.configured);
-            setIsConfigured(configured);
-            setApiMode(configured ? 'production' : 'unconfigured');
+            setConfigStatus(data);
+            setIsConfigured(data.isConfigured);
+            setApiMode(data.isConfigured ? 'production' : 'unconfigured');
           }
         }
       } catch {
@@ -83,20 +98,44 @@ export default function HomePage() {
     };
   }, []);
 
+  // Handle switching module or choosing a module
+  const handleSelectModule = (mod: StatementType) => {
+    setActiveModule(mod);
+    // Reset file and records whenever module changes to prevent cross-contamination
+    handleReset();
+  };
+
+  const handleBackToModules = () => {
+    setActiveModule(null);
+    handleReset();
+  };
+
+  const handleReset = () => {
+    setLoadedFileName(undefined);
+    setParsedRecords([]);
+    setValidationErrors([]);
+    setBatchSummary(null);
+    setIsSending(false);
+    setSendProgress({ total: 0, currentCount: 0, successCount: 0, failedCount: 0 });
+  };
+
+  // Handle Excel upload according to active module
   const handleFileSelect = async (file: File) => {
+    if (!activeModule) return;
     setIsParsing(true);
     setLoadedFileName(file.name);
     setBatchSummary(null);
 
     try {
-      const result = await parseExcelFile(file);
-      // Initialize row sendStatus to 'Ready'
-      const initializedRecords: EmployeeRecord[] = result.records.map((r) => ({
-        ...r,
-        sendStatus: 'Ready' as RowSendStatus,
-      }));
-      setParsedRecords(initializedRecords);
-      setValidationErrors(result.errors);
+      if (activeModule === 'weekly') {
+        const result = await parseWeeklyExcelFile(file);
+        setParsedRecords(result.records);
+        setValidationErrors(result.errors);
+      } else {
+        const result = await parseMonthlyExcelFile(file);
+        setParsedRecords(result.records);
+        setValidationErrors(result.errors);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to parse Excel file.';
       setValidationErrors([
@@ -112,16 +151,7 @@ export default function HomePage() {
     }
   };
 
-  const handleReset = () => {
-    setLoadedFileName(undefined);
-    setParsedRecords([]);
-    setValidationErrors([]);
-    setBatchSummary(null);
-    setIsSending(false);
-    setSendProgress({ total: 0, currentCount: 0, successCount: 0, failedCount: 0 });
-  };
-
-  // Helper to update a single record's send status in real-time
+  // Helper to update a record's send status in real-time
   const updateRecordStatus = (
     id: string,
     status: RowSendStatus,
@@ -156,7 +186,7 @@ export default function HomePage() {
   };
 
   // Open confirmation for Individual Send
-  const promptSingleSending = (employee: EmployeeRecord) => {
+  const promptSingleSending = (employee: WeeklyEmployeeRecord | MonthlyEmployeeRecord) => {
     if (employee.status === 'error') return;
 
     setConfirmationState({
@@ -177,8 +207,9 @@ export default function HomePage() {
     });
   };
 
-  // Execute single employee notification dispatch
-  const executeSingleSend = async (employee: EmployeeRecord) => {
+  // Execute single employee dispatch
+  const executeSingleSend = async (employee: WeeklyEmployeeRecord | MonthlyEmployeeRecord) => {
+    if (!activeModule) return;
     setIsSending(true);
     updateRecordStatus(employee.id, 'Sending');
 
@@ -186,7 +217,10 @@ export default function HomePage() {
       const response = await fetch('/api/send-salary', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employee }),
+        body: JSON.stringify({
+          statementType: activeModule,
+          employee,
+        }),
       });
 
       const data = await response.json();
@@ -206,7 +240,7 @@ export default function HomePage() {
         updateRecordStatus(
           employee.id,
           'Failed',
-          data.error || 'Failed to dispatch WhatsApp notification.'
+          data.error || 'Failed to dispatch WhatsApp statement.'
         );
       }
     } catch (err: unknown) {
@@ -218,8 +252,10 @@ export default function HomePage() {
   };
 
   // Execute Batch Sending Loop
-  const executeBatchSending = async (targetRecords?: EmployeeRecord[]) => {
-    // Target either explicitly provided records (e.g. for retry) or all non-error records
+  const executeBatchSending = async (
+    targetRecords?: (WeeklyEmployeeRecord | MonthlyEmployeeRecord)[]
+  ) => {
+    if (!activeModule) return;
     const recordsToProcess =
       targetRecords || parsedRecords.filter((r) => r.status !== 'error');
 
@@ -246,7 +282,6 @@ export default function HomePage() {
     for (let i = 0; i < recordsToProcess.length; i++) {
       const emp = recordsToProcess[i];
 
-      // Update row status to Sending
       updateRecordStatus(emp.id, 'Sending');
 
       setSendProgress({
@@ -257,11 +292,19 @@ export default function HomePage() {
         currentEmployeeName: emp.employeeName,
       });
 
+      const empAmount =
+        activeModule === 'weekly'
+          ? (emp as WeeklyEmployeeRecord).total
+          : (emp as MonthlyEmployeeRecord).netSalary;
+
       try {
         const response = await fetch('/api/send-salary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ employee: emp }),
+          body: JSON.stringify({
+            statementType: activeModule,
+            employee: emp,
+          }),
         });
 
         const data = await response.json();
@@ -279,8 +322,8 @@ export default function HomePage() {
             employeeId: emp.employeeId,
             employeeName: emp.employeeName,
             whatsappNumber: emp.formattedPhone || emp.whatsappNumber,
-            netSalary: emp.netSalary,
-            currency: emp.currency,
+            amount: empAmount,
+            currency: 'EGP',
             status: 'success',
             sentAt: sentAtStr,
             messageId: data.messageId,
@@ -294,8 +337,8 @@ export default function HomePage() {
             employeeId: emp.employeeId,
             employeeName: emp.employeeName,
             whatsappNumber: emp.formattedPhone || emp.whatsappNumber,
-            netSalary: emp.netSalary,
-            currency: emp.currency,
+            amount: empAmount,
+            currency: 'EGP',
             status: 'failed',
             errorDetails: errDetail,
           });
@@ -309,14 +352,13 @@ export default function HomePage() {
           employeeId: emp.employeeId,
           employeeName: emp.employeeName,
           whatsappNumber: emp.formattedPhone || emp.whatsappNumber,
-          netSalary: emp.netSalary,
-          currency: emp.currency,
+          amount: empAmount,
+          currency: 'EGP',
           status: 'failed',
           errorDetails: errorMsg,
         });
       }
 
-      // Update live counters
       setSendProgress((prev) => ({
         ...prev,
         successCount,
@@ -326,8 +368,8 @@ export default function HomePage() {
 
     setIsSending(false);
 
-    // Finalize summary report
     setBatchSummary({
+      statementType: activeModule,
       total,
       successful: successCount,
       failed: failedCount,
@@ -338,7 +380,6 @@ export default function HomePage() {
     });
   };
 
-  // Handle confirmation modal trigger
   const handleConfirmedAction = () => {
     if (confirmationState.mode === 'batch') {
       executeBatchSending();
@@ -354,125 +395,183 @@ export default function HomePage() {
   const validRecordsCount = parsedRecords.filter((r) => r.status !== 'error').length;
   const failedRecordsCount = parsedRecords.filter((r) => r.sendStatus === 'Failed').length;
 
+  const activeTemplateName =
+    activeModule === 'weekly'
+      ? configStatus?.weeklyTemplateName || 'salary_weekly_statement'
+      : configStatus?.monthlyTemplateName || 'salary_monthly_statement';
+
+  // Determine current workflow step
+  let currentStep = 1;
+  if (batchSummary) {
+    currentStep = 5;
+  } else if (isSending) {
+    currentStep = 4;
+  } else if (parsedRecords.length > 0) {
+    currentStep = 3;
+  } else if (loadedFileName) {
+    currentStep = 2;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* Top Business Navigation Header */}
-      <Header apiMode={apiMode} isConfigured={isConfigured} />
+      {/* Top Application Header */}
+      <Header
+        apiMode={apiMode}
+        isConfigured={isConfigured}
+        activeModule={activeModule}
+        onBackToModules={handleBackToModules}
+        onSwitchModule={handleSelectModule}
+      />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Hero Section */}
-        <div className="mb-10 text-center max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold mb-4 border border-emerald-200">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-            Meta WhatsApp Cloud API Business Automation
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-            HR Salary Sender
-          </h1>
-          <p className="text-base sm:text-lg text-slate-600 mt-3 font-normal leading-relaxed">
-            Upload an Excel payroll file to parse, validate, and send personalized salary statements via WhatsApp.
-          </p>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        {!activeModule ? (
+          /* Step 0: Landing Module Selector */
+          <ModuleSelector onSelectModule={handleSelectModule} />
+        ) : (
+          /* Active Module Workflow */
+          <div className="animate-fadeIn">
+            {/* Workflow Step Tracker Indicator */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-sm mb-8 overflow-x-auto">
+              <div className="flex items-center justify-between min-w-[600px] text-xs font-bold">
+                {[
+                  { step: 1, label: t.stepUpload },
+                  { step: 2, label: t.stepValidate },
+                  { step: 3, label: t.stepReview },
+                  { step: 4, label: t.stepSend },
+                  { step: 5, label: t.stepResults },
+                ].map((item, index) => {
+                  const isCompleted = currentStep > item.step;
+                  const isCurrent = currentStep === item.step;
 
-          {/* Initial Disabled CTA when no file loaded */}
-          {!loadedFileName && (
-            <div className="mt-6 inline-flex items-center gap-3">
-              <button
-                type="button"
-                disabled={true}
-                className="px-6 py-3 bg-slate-200 text-slate-400 font-bold rounded-xl text-sm cursor-not-allowed shadow-none border border-slate-300"
-              >
-                Upload Excel
-              </button>
+                  return (
+                    <React.Fragment key={item.step}>
+                      <div
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl transition-colors ${
+                          isCurrent
+                            ? 'bg-brand-50 text-brand-700 border border-brand-200 font-extrabold'
+                            : isCompleted
+                            ? 'text-emerald-700'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                            isCurrent
+                              ? 'bg-brand-600 text-white'
+                              : isCompleted
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {isCompleted ? '✓' : item.step}
+                        </span>
+                        <span>{item.label}</span>
+                      </div>
+                      {index < 4 && (
+                        <StepArrow className="w-4 h-4 text-slate-300 shrink-0" />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Step 1: Excel Upload Dropzone & Sample Template */}
-        <ExcelUpload
-          onFileSelect={handleFileSelect}
-          isLoading={isParsing}
-          loadedFileName={loadedFileName}
-          totalRecords={parsedRecords.length}
-          onReset={handleReset}
-        />
-
-        {/* Step 2: Validation Error Alerts */}
-        {loadedFileName && validationErrors.length > 0 && (
-          <div className="mt-6">
-            <ValidationErrors errors={validationErrors} />
-          </div>
-        )}
-
-        {/* Step 3: Active Progress Tracker */}
-        {isSending && (
-          <div className="mt-6">
-            <ProgressTracker
-              total={sendProgress.total}
-              currentCount={sendProgress.currentCount}
-              successCount={sendProgress.successCount}
-              failedCount={sendProgress.failedCount}
-              currentEmployeeName={sendProgress.currentEmployeeName}
-            />
-          </div>
-        )}
-
-        {/* Step 4: Results Summary & CSV Audit Download */}
-        {!isSending && batchSummary && (
-          <div className="mt-6">
-            <ResultsSummary
-              summary={batchSummary}
+            {/* Step 1: Excel Upload Dropzone & Sample Download */}
+            <ExcelUpload
+              statementType={activeModule}
+              onFileSelect={handleFileSelect}
+              isLoading={isParsing}
+              loadedFileName={loadedFileName}
+              totalRecords={parsedRecords.length}
               onReset={handleReset}
-              onRetryFailed={promptRetryFailed}
             />
-          </div>
-        )}
 
-        {/* Step 5: Interactive Employee Preview Table */}
-        {loadedFileName && parsedRecords.length > 0 && !isSending && (
-          <div className="mt-8">
-            <EmployeePreviewTable
-              records={parsedRecords}
-              onPreviewMessage={(emp) => setPreviewEmployee(emp)}
-              onStartBatchSending={promptBatchSending}
-              onSendSingleEmployee={promptSingleSending}
-              isSending={isSending}
-              hasErrors={hasBlockingErrors}
-            />
+            {/* Step 2: Validation Alerts */}
+            {loadedFileName && validationErrors.length > 0 && (
+              <div className="mt-6">
+                <ValidationErrors errors={validationErrors} />
+              </div>
+            )}
+
+            {/* Step 3: Progress Tracker */}
+            {isSending && (
+              <div className="mt-6">
+                <ProgressTracker
+                  total={sendProgress.total}
+                  currentCount={sendProgress.currentCount}
+                  successCount={sendProgress.successCount}
+                  failedCount={sendProgress.failedCount}
+                  currentEmployeeName={sendProgress.currentEmployeeName}
+                />
+              </div>
+            )}
+
+            {/* Step 4: Results Summary */}
+            {!isSending && batchSummary && (
+              <div className="mt-6">
+                <ResultsSummary
+                  summary={batchSummary}
+                  onReset={handleReset}
+                  onRetryFailed={promptRetryFailed}
+                />
+              </div>
+            )}
+
+            {/* Step 5: Employee Payroll Preview Table */}
+            {loadedFileName && parsedRecords.length > 0 && !isSending && (
+              <div className="mt-8">
+                <EmployeePreviewTable
+                  statementType={activeModule}
+                  records={parsedRecords}
+                  onPreviewMessage={(emp) => setPreviewEmployee(emp)}
+                  onStartBatchSending={promptBatchSending}
+                  onSendSingleEmployee={promptSingleSending}
+                  isSending={isSending}
+                  hasErrors={hasBlockingErrors}
+                />
+              </div>
+            )}
           </div>
         )}
       </main>
 
       {/* Confirmation Modal */}
-      <SendConfirmationModal
-        isOpen={confirmationState.isOpen}
-        mode={confirmationState.mode}
-        totalCount={
-          confirmationState.mode === 'single'
-            ? 1
-            : confirmationState.mode === 'retry'
-            ? failedRecordsCount
-            : validRecordsCount
-        }
-        employeeName={confirmationState.targetEmployee?.employeeName}
-        onConfirm={handleConfirmedAction}
-        onClose={() => setConfirmationState({ isOpen: false, mode: 'batch' })}
-      />
+      {activeModule && (
+        <SendConfirmationModal
+          isOpen={confirmationState.isOpen}
+          mode={confirmationState.mode}
+          statementType={activeModule}
+          templateName={activeTemplateName}
+          totalCount={
+            confirmationState.mode === 'single'
+              ? 1
+              : confirmationState.mode === 'retry'
+              ? failedRecordsCount
+              : validRecordsCount
+          }
+          employeeName={confirmationState.targetEmployee?.employeeName}
+          onConfirm={handleConfirmedAction}
+          onClose={() => setConfirmationState({ isOpen: false, mode: 'batch' })}
+        />
+      )}
 
       {/* Message Preview Modal */}
-      <MessagePreviewModal
-        employee={previewEmployee}
-        onClose={() => setPreviewEmployee(null)}
-      />
+      {activeModule && (
+        <MessagePreviewModal
+          statementType={activeModule}
+          employee={previewEmployee}
+          onClose={() => setPreviewEmployee(null)}
+        />
+      )}
 
-      {/* Clean Footer */}
+      {/* Footer */}
       <footer className="bg-slate-900 border-t border-slate-800 text-slate-400 text-xs py-6 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© 2026 HR Salary Sender — Internal Business Automation System</p>
-          <p className="text-slate-500">Official Meta WhatsApp Cloud API Endpoint</p>
+          <p>{t.footerCopyright}</p>
+          <p className="text-slate-500">{t.footerOfficial}</p>
         </div>
       </footer>
     </div>
   );
 }
-

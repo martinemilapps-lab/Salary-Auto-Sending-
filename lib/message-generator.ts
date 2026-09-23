@@ -1,61 +1,79 @@
-import { EmployeeRecord } from '@/types/salary';
+import { WeeklyEmployeeRecord } from '@/types/weekly';
+import { MonthlyEmployeeRecord } from '@/types/monthly';
+import { buildWeeklyTemplateParameters } from './whatsapp/weekly-template';
+import { buildMonthlyTemplateParameters } from './whatsapp/monthly-template';
+import { formatNumberWithCommas } from './validation/common';
 
-/**
- * Format a number as clean currency string (e.g. 8,000)
- */
+export { buildWeeklyTemplateParameters, buildMonthlyTemplateParameters };
+
 export function formatCurrencyNumber(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 0,
-  }).format(amount);
+  return formatNumberWithCommas(amount);
 }
 
 /**
- * Generate personalized salary message string for WhatsApp sending
+ * Generate formatted text preview representing the approved Weekly Statement template.
  */
-export function generateSalaryMessage(employee: EmployeeRecord): string {
-  const currencyStr = employee.currency || 'EGP';
-  const basicStr = `${formatCurrencyNumber(employee.basicSalary)} ${currencyStr}`;
-  const bonusStr = `${formatCurrencyNumber(employee.bonus)} ${currencyStr}`;
-  const deductionsStr = `${formatCurrencyNumber(employee.deductions)} ${currencyStr}`;
-  const netStr = `${formatCurrencyNumber(employee.netSalary)} ${currencyStr}`;
-
+export function generateWeeklyMessagePreview(employee: WeeklyEmployeeRecord): string {
   return (
-    `Hello ${employee.employeeName.trim()},\n\n` +
-    `Salary Statement\n\n` +
-    `Month:\n${employee.salaryMonth.trim()}\n\n` +
-    `Basic Salary:\n${basicStr}\n\n` +
-    `Bonus:\n${bonusStr}\n\n` +
-    `Deductions:\n${deductionsStr}\n\n` +
-    `Net Salary:\n${netStr}\n\n` +
-    `Thank you.`
+    `*بيان الراتب الأسبوعي*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *الاسم:* ${employee.employeeName || '—'}\n` +
+    `📅 *الأسبوع:* ${employee.week || '—'}\n` +
+    `🗓️ *الشهر:* ${employee.month || '—'}\n\n` +
+    `➕ *الاستحقاقات والحوافز:*\n` +
+    `• حافز الإنتاج: ${formatNumberWithCommas(employee.productionIncentive)} ج.م\n` +
+    `• بدل الانتقال: ${formatNumberWithCommas(employee.transportAllowance)} ج.م\n` +
+    `• مبلغ السبت: ${formatNumberWithCommas(employee.saturdayAmount)} ج.م\n` +
+    `• فرق السبت: ${formatNumberWithCommas(employee.saturdayDiffAmount)} ج.م\n` +
+    `• مبلغ السهرات: ${formatNumberWithCommas(employee.eveningAmount)} ج.م\n` +
+    `• مكافآت: ${formatNumberWithCommas(employee.bonuses)} ج.م\n` +
+    `• بدل وجبة: ${formatNumberWithCommas(employee.mealAllowance)} ج.م\n` +
+    `• حافز كفاءة: ${formatNumberWithCommas(employee.efficiencyIncentive)} ج.م\n` +
+    `• حافز انتظام: ${formatNumberWithCommas(employee.regularityIncentive)} ج.م\n` +
+    `• منحة: ${formatNumberWithCommas(employee.grant)} ج.م\n` +
+    `• تسويات: ${formatNumberWithCommas(employee.settlements)} ج.م\n\n` +
+    `➖ *الاستقطاعات:*\n` +
+    `• تحت الحساب: ${formatNumberWithCommas(employee.underAccount)} ج.م\n\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *الإجمالي المستحق:* ${formatNumberWithCommas(employee.total)} ج.م`
   );
 }
 
 /**
- * Builds the 6 approved Meta WhatsApp template parameters for the salary_statement utility template.
- * Parameters are strictly ordered:
- * {{1}} → Employee Name
- * {{2}} → Salary Month
- * {{3}} → Basic Salary (with currency formatting)
- * {{4}} → Bonus (with currency formatting)
- * {{5}} → Deductions (with currency formatting)
- * {{6}} → Net Salary (with currency formatting)
+ * Generate formatted text preview representing the approved Monthly Statement template.
  */
-export function buildSalaryTemplateParameters(employee: EmployeeRecord): string[] {
-  const currencyStr = employee.currency || 'EGP';
-  const basicStr = `${formatCurrencyNumber(employee.basicSalary)} ${currencyStr}`;
-  const bonusStr = `${formatCurrencyNumber(employee.bonus)} ${currencyStr}`;
-  const deductionsStr = `${formatCurrencyNumber(employee.deductions)} ${currencyStr}`;
-  const netStr = `${formatCurrencyNumber(employee.netSalary)} ${currencyStr}`;
-
-  return [
-    (employee.employeeName || '').trim(),
-    (employee.salaryMonth || '').trim(),
-    basicStr,
-    bonusStr,
-    deductionsStr,
-    netStr,
-  ];
+export function generateMonthlyMessagePreview(employee: MonthlyEmployeeRecord): string {
+  return (
+    `*بيان مفردات المرتب الشهري*\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *الاسم:* ${employee.employeeName || '—'}\n` +
+    `📅 *فترة الراتب:* ${employee.salaryPeriod || '—'}\n\n` +
+    `💼 *الأجور والبدلات:*\n` +
+    `• أجر الاشتراك: ${formatNumberWithCommas(employee.subscriptionWage)} ج.م\n` +
+    `• الأجر الشامل: ${formatNumberWithCommas(employee.comprehensiveWage)} ج.م\n` +
+    `• بند الشهر: ${formatNumberWithCommas(employee.monthlyItem)} ج.م\n` +
+    `• بدل غلاء المعيشة: ${formatNumberWithCommas(employee.costOfLivingAllowance)} ج.م\n` +
+    `• حافز العامل: ${formatNumberWithCommas(employee.workerIncentive)} ج.م\n` +
+    `• إجمالي الراتب قبل الاستقطاعات: ${formatNumberWithCommas(employee.grossBeforeDeductions)} ج.م\n\n` +
+    `➖ *الاستقطاعات:*\n` +
+    `• الغياب: ${formatNumberWithCommas(employee.absence)} ج.م\n` +
+    `• الضريبة: ${formatNumberWithCommas(employee.tax)} ج.م\n` +
+    `• السلفة: ${formatNumberWithCommas(employee.advance)} ج.م\n` +
+    `• السكن: ${formatNumberWithCommas(employee.housing)} ج.م\n` +
+    `• باقي السلفة: ${formatNumberWithCommas(employee.remainingAdvance)} ج.م\n\n` +
+    `🏖️ *الأرصدة:*\n` +
+    `• رصيد الإجازات: ${employee.leaveBalance || '0'}\n` +
+    `• رصيد العارضة: ${employee.casualLeaveBalance || '0'}\n\n` +
+    `━━━━━━━━━━━━━━━━━━\n` +
+    `💵 *صافي الراتب المستحق:* ${formatNumberWithCommas(employee.netSalary)} ج.م`
+  );
 }
 
+// Legacy backward-compatible preview function
+export function generateSalaryMessage(employee: MonthlyEmployeeRecord): string {
+  return generateMonthlyMessagePreview(employee);
+}
+
+export function buildSalaryTemplateParameters(employee: MonthlyEmployeeRecord): string[] {
+  return buildMonthlyTemplateParameters(employee);
+}

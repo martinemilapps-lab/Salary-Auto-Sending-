@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { EmployeeRecord } from '@/types/salary';
-import { buildSalaryTemplateParameters } from '@/lib/message-generator';
-import { sendWhatsAppTemplateMessage, getWhatsAppConfigStatus } from '@/lib/whatsapp';
+import { StatementType } from '@/types/common';
+import { WeeklyEmployeeRecord } from '@/types/weekly';
+import { MonthlyEmployeeRecord } from '@/types/monthly';
+import { buildWeeklyTemplateParameters, buildMonthlyTemplateParameters } from '@/lib/message-generator';
+import { sendWhatsAppStatementMessage, getWhatsAppConfigStatus } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,36 +15,38 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { employee } = body as { employee: EmployeeRecord };
+    const statementType: StatementType = body.statementType === 'weekly' ? 'weekly' : 'monthly';
+    const employee = body.employee as WeeklyEmployeeRecord | MonthlyEmployeeRecord;
 
-    if (!employee || !employee.employeeName || !employee.formattedPhone) {
+    const recipientPhone = employee?.formattedPhone || employee?.whatsappNumber;
+
+    if (!employee || !employee.employeeName || !recipientPhone) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required employee details (name or formatted phone).',
+          error: 'Missing required employee details (name or valid phone number).',
         },
         { status: 400 }
       );
     }
 
-    // Build the 6 approved Meta WhatsApp template parameters in exact order:
-    // {{1}} Employee Name
-    // {{2}} Salary Month
-    // {{3}} Basic Salary
-    // {{4}} Bonus
-    // {{5}} Deductions
-    // {{6}} Net Salary
-    const parameters = buildSalaryTemplateParameters(employee);
+    // Select the correct template parameter mapper based on statementType
+    let parameters: string[];
+    if (statementType === 'weekly') {
+      parameters = buildWeeklyTemplateParameters(employee as WeeklyEmployeeRecord);
+    } else {
+      parameters = buildMonthlyTemplateParameters(employee as MonthlyEmployeeRecord);
+    }
 
-    // Dispatch via WhatsApp Cloud API using the approved salary_statement template
-    const result = await sendWhatsAppTemplateMessage(employee.formattedPhone, parameters);
+    // Dispatch via shared WhatsApp sending engine
+    const result = await sendWhatsAppStatementMessage(recipientPhone, statementType, parameters);
 
     if (!result.success) {
       return NextResponse.json(
         {
           success: false,
           mode: result.mode,
-          error: result.error || 'Failed to send WhatsApp message.',
+          error: result.error || 'Failed to send WhatsApp statement.',
         },
         { status: result.mode === 'unconfigured' ? 400 : 500 }
       );

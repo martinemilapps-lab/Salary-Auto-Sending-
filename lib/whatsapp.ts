@@ -1,4 +1,7 @@
-import { WhatsAppApiPayload } from '@/types/salary';
+import { WhatsAppApiPayload, StatementType, WhatsAppConfigStatus } from '@/types/common';
+import { getStatementTemplateConfig, getWhatsAppConfigStatus } from './whatsapp/templates';
+
+export { getWhatsAppConfigStatus };
 
 export interface SendWhatsAppResponse {
   success: boolean;
@@ -8,125 +11,53 @@ export interface SendWhatsAppResponse {
   statusCode?: number;
 }
 
-export interface WhatsAppConfigStatus {
-  isConfigured: boolean;
-  hasAccessToken: boolean;
-  hasPhoneNumberId: boolean;
-  hasApiVersion: boolean;
-  apiVersion: string;
-  templateName: string;
-  templateLanguageCode: string;
-}
-
 /**
  * Normalizes phone number into digits-only format required by Meta WhatsApp Cloud API.
  * Strips '+', spaces, hyphens, and any non-digit characters.
  */
 export function normalizePhoneNumber(phone: string): string {
-  return phone.replace(/\D/g, '').trim();
+  return (phone || '').replace(/\D/g, '').trim();
 }
 
 /**
- * Checks server-side WhatsApp Cloud API configuration safely.
- * Returns booleans indicating existence of required credentials, NEVER secret tokens or values.
- */
-export function getWhatsAppConfigStatus(): WhatsAppConfigStatus {
-  const token = process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const apiVersion = process.env.WHATSAPP_API_VERSION || 'v21.0';
-  const templateName = (process.env.WHATSAPP_TEMPLATE_NAME || 'salary_statement').trim();
-  const templateLanguageCode = (process.env.WHATSAPP_TEMPLATE_LANGUAGE_CODE || 'en').trim();
-
-  const hasAccessToken = Boolean(
-    token &&
-      token.trim().length > 0 &&
-      !token.includes('your_meta_system_user') &&
-      !token.includes('your_access_token')
-  );
-
-  const hasPhoneNumberId = Boolean(
-    phoneNumberId &&
-      phoneNumberId.trim().length > 0 &&
-      !phoneNumberId.includes('your_whatsapp_phone_number_id')
-  );
-
-  const hasApiVersion = Boolean(
-    process.env.WHATSAPP_API_VERSION && process.env.WHATSAPP_API_VERSION.trim().length > 0
-  );
-
-  const isConfigured = hasAccessToken && hasPhoneNumberId;
-
-  return {
-    isConfigured,
-    hasAccessToken,
-    hasPhoneNumberId,
-    hasApiVersion,
-    apiVersion,
-    templateName,
-    templateLanguageCode,
-  };
-}
-
-/**
- * Sends a WhatsApp salary statement using the approved Meta Utility Template.
- * Outgoing payload structure:
- * {
- *   "messaging_product": "whatsapp",
- *   "recipient_type": "individual",
- *   "to": "RECIPIENT_PHONE",
- *   "type": "template",
- *   "template": {
- *     "name": "salary_statement",
- *     "language": { "code": "EXACT_TEMPLATE_LANGUAGE_CODE" },
- *     "components": [
- *       {
- *         "type": "body",
- *         "parameters": [
- *           { "type": "text", "text": "EMPLOYEE_NAME" },
- *           { "type": "text", "text": "SALARY_MONTH" },
- *           { "type": "text", "text": "BASIC_SALARY" },
- *           { "type": "text", "text": "BONUS" },
- *           { "type": "text", "text": "DEDUCTIONS" },
- *           { "type": "text", "text": "NET_SALARY" }
- *         ]
- *       }
- *     ]
- *   }
- * }
+ * Shared WhatsApp Sending Engine.
+ * Dispatches a template message via Meta WhatsApp Cloud API for either Weekly or Monthly statements.
  *
- * Confidentiality: Salary amounts, complete messages, access tokens, and financial parameters
+ * Safety & Confidentiality:
+ * Salary amounts, employee personal data, complete messages, access tokens, and financial parameters
  * are strictly NEVER logged to the console or server diagnostics.
  */
-export async function sendWhatsAppTemplateMessage(
+export async function sendWhatsAppStatementMessage(
   recipientPhone: string,
+  statementType: StatementType,
   parameters: string[]
 ): Promise<SendWhatsAppResponse> {
   const token = process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const apiVersion = process.env.WHATSAPP_API_VERSION || 'v21.0';
-  const templateName = (process.env.WHATSAPP_TEMPLATE_NAME || 'salary_statement').trim();
-  const templateLanguageCode = (process.env.WHATSAPP_TEMPLATE_LANGUAGE_CODE || 'en').trim();
 
-  // Basic validation of recipient phone
+  const { name: templateName, languageCode } = getStatementTemplateConfig(statementType);
+
+  // Validate recipient phone
   const cleanPhone = normalizePhoneNumber(recipientPhone);
   if (!cleanPhone || cleanPhone.length < 8) {
     return {
       success: false,
       mode: 'unconfigured',
-      error: `Invalid phone number: "${recipientPhone}". A valid international phone number is required.`,
+      error: `Invalid recipient phone number: "${recipientPhone}". A valid international phone number is required.`,
     };
   }
 
-  // Validate exact 6 template parameters
-  if (!parameters || parameters.length !== 6) {
+  // Validate parameters count (16 parameters required for both weekly and monthly approved templates)
+  if (!parameters || parameters.length !== 16) {
     return {
       success: false,
       mode: 'unconfigured',
-      error: `Template "${templateName}" requires exactly 6 body parameters, received ${parameters?.length || 0}.`,
+      error: `Template "${templateName}" requires exactly 16 body parameters, received ${parameters?.length || 0}.`,
     };
   }
 
-  // Check if API credentials exist
+  // Check credentials
   const isConfigured = Boolean(
     token &&
       phoneNumberId &&
@@ -152,7 +83,7 @@ export async function sendWhatsAppTemplateMessage(
     template: {
       name: templateName,
       language: {
-        code: templateLanguageCode,
+        code: languageCode,
       },
       components: [
         {
@@ -166,7 +97,6 @@ export async function sendWhatsAppTemplateMessage(
     },
   };
 
-  // Configure timeout controller (15s timeout)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
@@ -175,7 +105,7 @@ export async function sendWhatsAppTemplateMessage(
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -192,6 +122,12 @@ export async function sendWhatsAppTemplateMessage(
         data?.error?.message ||
         data?.error?.error_data?.details ||
         `HTTP request failed with status ${response.status}`;
+
+      // Safe logging without financial details
+      console.error(
+        `[WhatsApp Engine] API Error: status=${response.status}, code=${data?.error?.code || 'N/A'}, statement=${statementType}`
+      );
+
       return {
         success: false,
         mode: 'production',
@@ -227,8 +163,62 @@ export async function sendWhatsAppTemplateMessage(
 }
 
 /**
- * Backward compatibility wrapper for sendWhatsAppMessage.
+ * Legacy wrapper for backward compatibility.
  */
+export async function sendWhatsAppTemplateMessage(
+  recipientPhone: string,
+  parameters: string[]
+): Promise<SendWhatsAppResponse> {
+  // If legacy 6 parameters were passed, wrap or support monthly
+  if (parameters.length === 16) {
+    return sendWhatsAppStatementMessage(recipientPhone, 'monthly', parameters);
+  }
+
+  // Legacy fallback for 6-parameter template if needed
+  const token = process.env.WHATSAPP_ACCESS_TOKEN || process.env.WHATSAPP_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const apiVersion = process.env.WHATSAPP_API_VERSION || 'v21.0';
+  const templateName = (process.env.WHATSAPP_TEMPLATE_NAME || 'salary_statement').trim();
+  const templateLanguageCode = (process.env.WHATSAPP_TEMPLATE_LANGUAGE_CODE || 'ar').trim();
+
+  const cleanPhone = normalizePhoneNumber(recipientPhone);
+  if (!cleanPhone || cleanPhone.length < 8) {
+    return { success: false, mode: 'unconfigured', error: 'Invalid phone number' };
+  }
+
+  const isConfigured = Boolean(
+    token && phoneNumberId && !token.includes('your_meta') && !phoneNumberId.includes('your_whatsapp')
+  );
+  if (!isConfigured) {
+    return { success: false, mode: 'unconfigured', error: 'Credentials not configured' };
+  }
+
+  try {
+    const response = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanPhone,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: templateLanguageCode },
+          components: [{ type: 'body', parameters: parameters.map((p) => ({ type: 'text', text: String(p ?? '') })) }],
+        },
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { success: false, mode: 'production', error: data?.error?.message || 'Meta API error' };
+    }
+    return { success: true, mode: 'production', messageId: data?.messages?.[0]?.id };
+  } catch (err: unknown) {
+    return { success: false, mode: 'production', error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
 export async function sendWhatsAppMessage(
   recipientPhone: string,
   parametersOrText: string[] | string
@@ -236,11 +226,9 @@ export async function sendWhatsAppMessage(
   if (Array.isArray(parametersOrText)) {
     return sendWhatsAppTemplateMessage(recipientPhone, parametersOrText);
   }
-  // If a raw string was supplied, wrap it or return error because templates are required
   return {
     success: false,
     mode: 'unconfigured',
-    error: 'Free-form text sending is disabled. Use the approved salary_statement template parameters.',
+    error: 'Free-form text sending is disabled. Use the approved WhatsApp utility template parameters.',
   };
 }
-

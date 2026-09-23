@@ -1,89 +1,157 @@
 import * as XLSX from 'xlsx';
 
-export interface SampleEmployeeData {
-  'Employee ID': string;
-  'Employee Name': string;
-  'WhatsApp Number': string;
-  'Salary Month': string;
-  'Basic Salary': number;
-  'Bonus': number;
-  'Deductions': number;
-  'Net Salary': number;
-}
-
-export const SAMPLE_EMPLOYEES: SampleEmployeeData[] = [
+// Sample Weekly Employees with all 16 Weekly fields + Phone + Code
+export const SAMPLE_WEEKLY_EMPLOYEES = [
   {
-    'Employee ID': 'EMP-1001',
-    'Employee Name': 'Ahmed Hassan',
-    'WhatsApp Number': '+201012345678',
-    'Salary Month': 'July 2026',
-    'Basic Salary': 8000,
-    'Bonus': 500,
-    'Deductions': 300,
-    'Net Salary': 8200,
+    'كود الموظف': 'W-101',
+    'الاسم': 'أحمد حسن إبراهيم',
+    'رقم الهاتف': '+201012345678',
+    'الأسبوع': 'الأسبوع الأول',
+    'الشهر': 'يوليو 2026',
+    'تسويات': 150,
+    'حافز الإنتاج': 450,
+    'بدل الانتقال': 200,
+    'مبلغ السبت': 300,
+    'مبلغ فرق السبت': 50,
+    'مبلغ السهرات': 250,
+    'مكافآت': 100,
+    'بدل وجبة': 175,
+    'حافز كفاءة': 200,
+    'حافز انتظام': 200,
+    'منحة': 500,
+    'تحت الحساب': 200,
+    'الإجمالي': 2375,
   },
   {
-    'Employee ID': 'EMP-1002',
-    'Employee Name': 'Mariam Omar',
-    'WhatsApp Number': '+201198765432',
-    'Salary Month': 'July 2026',
-    'Basic Salary': 12000,
-    'Bonus': 1500,
-    'Deductions': 600,
-    'Net Salary': 12900,
+    'كود الموظف': 'W-102',
+    'الاسم': 'مريم عمر علي',
+    'رقم الهاتف': '+201198765432',
+    'الأسبوع': 'الأسبوع الأول',
+    'الشهر': 'يوليو 2026',
+    'تسويات': 0,
+    'حافز الإنتاج': 600,
+    'بدل الانتقال': 200,
+    'مبلغ السبت': 350,
+    'مبلغ فرق السبت': 0,
+    'مبلغ السهرات': 300,
+    'مكافآت': 200,
+    'بدل وجبة': 175,
+    'حافز كفاءة': 250,
+    'حافز انتظام': 200,
+    'منحة': 500,
+    'تحت الحساب': 0,
+    'الإجمالي': 2775,
   },
   {
-    'Employee ID': 'EMP-1003',
-    'Employee Name': 'Khaled Mostafa',
-    'WhatsApp Number': '+201255554433',
-    'Salary Month': 'July 2026',
-    'Basic Salary': 9500,
-    'Bonus': 800,
-    'Deductions': 400,
-    'Net Salary': 9900,
-  },
-  {
-    'Employee ID': 'EMP-1004',
-    'Employee Name': 'Nour El-Din',
-    'WhatsApp Number': '+201500001122',
-    'Salary Month': 'July 2026',
-    'Basic Salary': 15000,
-    'Bonus': 2000,
-    'Deductions': 1000,
-    'Net Salary': 16000,
-  },
-  {
-    'Employee ID': 'EMP-1005',
-    'Employee Name': 'Sara Ibrahim',
-    'WhatsApp Number': '+201077778899',
-    'Salary Month': 'July 2026',
-    'Basic Salary': 7500,
-    'Bonus': 300,
-    'Deductions': 200,
-    'Net Salary': 7600,
+    'كود الموظف': 'W-103',
+    'الاسم': 'خالد مصطفى سيد',
+    'رقم الهاتف': '+201255554433',
+    'الأسبوع': 'الأسبوع الأول',
+    'الشهر': 'يوليو 2026',
+    'تسويات': 100,
+    'حافز الإنتاج': 400,
+    'بدل الانتقال': 200,
+    'مبلغ السبت': 300,
+    'مبلغ فرق السبت': 50,
+    'مبلغ السهرات': 200,
+    'مكافآت': 50,
+    'بدل وجبة': 175,
+    'حافز كفاءة': 150,
+    'حافز انتظام': 200,
+    'منحة': 500,
+    'تحت الحساب': 300,
+    'الإجمالي': 2025,
   },
 ];
 
-/**
- * Downloads a sample pre-formatted Excel template file
- */
-export function downloadSampleExcelTemplate(): void {
-  const worksheet = XLSX.utils.json_to_sheet(SAMPLE_EMPLOYEES);
+// Sample Monthly Employees with all 16 Monthly fields + Phone + Code
+export const SAMPLE_MONTHLY_EMPLOYEES = [
+  {
+    'كود الموظف': 'EMP-2001',
+    'الاسم': 'أحمد حسن إبراهيم',
+    'رقم الهاتف': '+201012345678',
+    'شهر أو فترة الراتب': 'يوليو 2026',
+    'أجر الاشتراك': 4500,
+    'الأجر الشامل': 8000,
+    'بند الشهر': 500,
+    'بدل غلاء المعيشة': 1000,
+    'حافز العامل': 1200,
+    'الغياب': 0,
+    'الضريبة': 350,
+    'إجمالي الراتب قبل الاستقطاعات': 10700,
+    'صافي الراتب': 9850,
+    'السلفة': 500,
+    'السكن': 0,
+    'باقي السلفة': 1500,
+    'رصيد الإجازات': 18,
+    'رصيد العارضة': 4,
+  },
+  {
+    'كود الموظف': 'EMP-2002',
+    'الاسم': 'مريم عمر علي',
+    'رقم الهاتف': '+201198765432',
+    'شهر أو فترة الراتب': 'يوليو 2026',
+    'أجر الاشتراك': 6000,
+    'الأجر الشامل': 12000,
+    'بند الشهر': 800,
+    'بدل غلاء المعيشة': 1000,
+    'حافز العامل': 2000,
+    'الغياب': 200,
+    'الضريبة': 850,
+    'إجمالي الراتب قبل الاستقطاعات': 15800,
+    'صافي الراتب': 14750,
+    'السلفة': 0,
+    'السكن': 0,
+    'باقي السلفة': 0,
+    'رصيد الإجازات': 21,
+    'رصيد العارضة': 6,
+  },
+  {
+    'كود الموظف': 'EMP-2003',
+    'الاسم': 'خالد مصطفى سيد',
+    'رقم الهاتف': '+201255554433',
+    'شهر أو فترة الراتب': 'يوليو 2026',
+    'أجر الاشتراك': 5000,
+    'الأجر الشامل': 9500,
+    'بند الشهر': 600,
+    'بدل غلاء المعيشة': 1000,
+    'حافز العامل': 1500,
+    'الغياب': 0,
+    'الضريبة': 450,
+    'إجمالي الراتب قبل الاستقطاعات': 12600,
+    'صافي الراتب': 11150,
+    'السلفة': 1000,
+    'السكن': 0,
+    'باقي السلفة': 2000,
+    'رصيد الإجازات': 14,
+    'رصيد العارضة': 2,
+  },
+];
 
-  // Set column widths for readability
+export function downloadWeeklySampleExcelTemplate(): void {
+  const worksheet = XLSX.utils.json_to_sheet(SAMPLE_WEEKLY_EMPLOYEES);
   worksheet['!cols'] = [
-    { wch: 15 }, // Employee ID
-    { wch: 22 }, // Employee Name
-    { wch: 20 }, // WhatsApp Number
-    { wch: 15 }, // Salary Month
-    { wch: 15 }, // Basic Salary
-    { wch: 12 }, // Bonus
-    { wch: 12 }, // Deductions
-    { wch: 15 }, // Net Salary
+    { wch: 12 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+    { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 }, { wch: 14 }
   ];
-
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Salary Sheet');
-
-  XLSX.writeFile(workbook, 'HR_Salary_Template_July_2026.xlsx');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'البيان الأسبوعي');
+  XLSX.writeFile(workbook, 'Weekly_Payroll_Template_16Params.xlsx');
 }
+
+export function downloadMonthlySampleExcelTemplate(): void {
+  const worksheet = XLSX.utils.json_to_sheet(SAMPLE_MONTHLY_EMPLOYEES);
+  worksheet['!cols'] = [
+    { wch: 12 }, { wch: 22 }, { wch: 16 }, { wch: 18 }, { wch: 14 },
+    { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
+    { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+    { wch: 14 }, { wch: 14 }, { wch: 14 }
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'البيان الشهري');
+  XLSX.writeFile(workbook, 'Monthly_Payroll_Template_16Params.xlsx');
+}
+
+export const downloadSampleExcelTemplate = downloadMonthlySampleExcelTemplate;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { I18nProvider } from '@/lib/i18n';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -9,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'HR Salary Sender - Automated WhatsApp Salary Statements',
-  description: 'Upload an Excel file and send personalized salary notifications via WhatsApp Cloud API.',
+  title: 'HR Salary Sender — Automated WhatsApp Payroll System',
+  description: 'Enterprise WhatsApp Payroll Statement Automation System for Weekly and Monthly payroll statements.',
 };
 
 export default function RootLayout({
@@ -19,9 +20,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased flex flex-col selection:bg-emerald-500 selection:text-white">
-        {children}
+    <html lang="ar" dir="rtl" className={inter.variable}>
+      <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased flex flex-col selection:bg-brand-600 selection:text-white">
+        <I18nProvider>
+          {children}
+        </I18nProvider>
       </body>
     </html>
   );
